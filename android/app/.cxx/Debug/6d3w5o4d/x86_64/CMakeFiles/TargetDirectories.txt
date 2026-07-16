@@ -1,0 +1,2 @@
+/Users/bayka/AndroidStudioProjects/storksnew/android/app/.cxx/Debug/6d3w5o4d/x86_64/CMakeFiles/edit_cache.dir
+/Users/bayka/AndroidStudioProjects/storksnew/android/app/.cxx/Debug/6d3w5o4d/x86_64/CMakeFiles/rebuild_cache.dir
