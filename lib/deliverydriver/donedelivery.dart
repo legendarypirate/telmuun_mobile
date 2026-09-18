@@ -9,7 +9,7 @@ import 'package:http/http.dart' as http;
 
 import '../color/color.dart';
 import '../screen/login.dart';
-import 'createDelivery.dart';
+import '../utils/date_picker.dart';
 import 'dashboard.dart';
 
 class Delivery {
@@ -20,8 +20,6 @@ class Delivery {
   String comment;
   String price;
   final String address;
-  List<String> possibleStatuses;
-
   bool isPaid;
   bool isRural;
 
@@ -33,12 +31,6 @@ class Delivery {
     required this.price,
     required this.comment,
     required this.address,
-    this.possibleStatuses = const [
-      "Pending",
-      "Хуваарилсан",
-      "Delivered",
-      "Cancelled"
-    ],
     this.isPaid = false,
     this.isRural = false,
   });
@@ -46,16 +38,18 @@ class Delivery {
   factory Delivery.fromJson(Map<String, dynamic> json) {
     return Delivery(
       id: json['id'],
-      phone: json['phone'],
+      phone: json['phone']?.toString() ?? '',
       status: _statusFromCode(json['status']),
       createdDate: DateTime.parse(json['createdAt']),
-      comment: json['comment'] ?? '',
-      price: json['price'] ?? '',
-      address: json['address'],
+      comment: json['comment']?.toString() ?? '',
+      price: json['price']?.toString() ?? '0',
+      address: json['address']?.toString() ?? '',
       isPaid: json['is_paid'] ?? false,
       isRural: json['is_rural'] ?? false,
     );
   }
+
+  double get priceValue => double.tryParse(price) ?? 0;
 
   static String _statusFromCode(int statusCode) {
     switch (statusCode) {
@@ -71,23 +65,6 @@ class Delivery {
         return "Буцаасан";
     }
   }
-
-  static int _codeFromStatus(String status) {
-    switch (status) {
-      case "Pending":
-        return 1;
-      case "Хуваарилсан":
-        return 2;
-      case "хүргэсэн":
-        return 3;
-      case "Cancelled":
-        return 4;
-      default:
-        return 0;
-    }
-  }
-
-  int get statusCode => _codeFromStatus(status);
 }
 
 class Done extends StatefulWidget {
@@ -99,136 +76,123 @@ class Done extends StatefulWidget {
 
 class _DoneState extends State<Done> {
   List<Delivery> deliveries = [];
-  int? expandedIndex;
   bool isLoading = true;
-
-  // Date filter state
   DateTime? _startDate;
   DateTime? _endDate;
 
-  List<String> statuses = [
-    'Pending',
-    'Хуваарилсан',
-    'хүргэсэн',
-    'Cancelled',
-  ];
+  static const Color _orange = Color(0xFFFF6A1A);
+  static const Color _navy = Color(0xFF0F2744);
+  static const Color _bg = Color(0xFFF5F6F8);
+  static const Color _muted = Color(0xFF7A8699);
 
-  /// Fetch deliveries. If [startDate] and [endDate] are provided, include them as
-  /// query parameters. Otherwise, backend defaults to the last 3 days.
   Future<void> fetchDeliveries({DateTime? startDate, DateTime? endDate}) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    int? userId = prefs.getInt('user_id');
-
-    final DateFormat formatter = DateFormat('yyyy-MM-dd');
-    String query = '';
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    final formatter = DateFormat('yyyy-MM-dd');
+    var query = '';
     if (startDate != null && endDate != null) {
       query =
-      '?startDate=${formatter.format(startDate)}&endDate=${formatter.format(endDate)}';
+          '?startDate=${formatter.format(startDate)}&endDate=${formatter.format(endDate)}';
     }
 
     final url = Uri.parse(
         '${Url.url}/api/mobile/delivery/driver/$userId/status-3$query');
-    debugPrint('Fetching deliveries from: $url');
 
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
-        final List data = jsonResponse['data'];
-
+        final List data = jsonResponse['data'] ?? [];
         setState(() {
           deliveries = data.map((item) => Delivery.fromJson(item)).toList();
           isLoading = false;
         });
       } else {
-        debugPrint('Error: ${response.statusCode}');
         setState(() => isLoading = false);
       }
     } catch (e) {
-      debugPrint('Failed to load deliveries: $e');
       setState(() => isLoading = false);
-    }
-  }
-
-  Future<void> updateStatus(int index, String newStatus) async {
-    final delivery = deliveries[index];
-    final url =
-    Uri.parse('${Url.url}/api/mobile/delivery/${delivery.id}/status');
-
-    try {
-      final response = await http.put(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'status': Delivery._codeFromStatus(newStatus)}),
-      );
-
-      if (response.statusCode == 200) {
-        setState(() {
-          delivery.status = newStatus;
-          expandedIndex = null;
-        });
-      } else {
-        debugPrint('Failed to update status: ${response.statusCode}');
-      }
-    } catch (e) {
-      debugPrint('Error updating status: $e');
     }
   }
 
   Color statusColor(String status) {
     switch (status.toLowerCase()) {
       case 'pending':
-        return Colors.orange;
+        return const Color(0xFFE6A700);
       case 'хуваарилсан':
-        return Colors.blue;
+        return const Color(0xFF1B9BE4);
       case 'хүргэсэн':
-        return Colors.green;
+        return const Color(0xFF1FA97A);
       case 'cancelled':
-        return Colors.red;
+        return const Color(0xFFE5484D);
       default:
-        return Colors.orange;
+        return _orange;
+    }
+  }
+
+  String statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case 'pending':
+        return 'Хүлээгдэж буй';
+      case 'хуваарилсан':
+        return 'Хуваарилсан';
+      case 'хүргэсэн':
+        return 'Хүргэгдсэн';
+      case 'cancelled':
+        return 'Цуцлагдсан';
+      default:
+        return status;
     }
   }
 
   String formatDate(DateTime date) {
-    return DateFormat('yyyy-MM-dd – kk:mm').format(date);
+    return DateFormat('MM.dd  HH:mm').format(date);
   }
 
-  /// Opens a date-range picker and refreshes the delivery list according to the
-  /// selected range.
+  String formatPrice(num value) {
+    if (value == 0) return '0₮';
+    return '${NumberFormat('#,###').format(value)}₮';
+  }
+
   Future<void> _pickDateRange() async {
     final now = DateTime.now();
-
-    final DateTimeRange? picked = await showDateRangePicker(
-      context: context,
+    final picked = await pickAppDateRange(
+      context,
       firstDate: DateTime(now.year - 5),
       lastDate: DateTime(now.year + 1),
       initialDateRange: _startDate != null && _endDate != null
           ? DateTimeRange(start: _startDate!, end: _endDate!)
           : DateTimeRange(
-          start: now.subtract(const Duration(days: 2)), end: now),
+              start: now.subtract(const Duration(days: 2)), end: now),
     );
-
     if (picked != null) {
       setState(() {
         _startDate = picked.start;
         _endDate = picked.end;
         isLoading = true;
       });
-
       await fetchDeliveries(startDate: _startDate, endDate: _endDate);
     }
   }
 
-  /// Clears the date filter, reverting to the backend default (last 3 days).
   Future<void> _clearDateFilter() async {
     setState(() {
       _startDate = null;
       _endDate = null;
       isLoading = true;
     });
-
     await fetchDeliveries();
+  }
+
+  Future<void> _logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (_) => Login()),
+      (_) => false,
+    );
   }
 
   @override
@@ -240,202 +204,242 @@ class _DoneState extends State<Done> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _bg,
       appBar: AppBar(
+        elevation: 0,
         automaticallyImplyLeading: false,
+        backgroundColor: _orange,
+        centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.dashboard, color: Colors.white),
-          tooltip: 'Dashboard',
+          icon: const Icon(Icons.dashboard_outlined, color: Colors.white),
           onPressed: () {
             Navigator.push(
-                context, MaterialPageRoute(builder: (_) => Dashboard()));
+              context,
+              MaterialPageRoute(builder: (_) => Dashboard()),
+            );
           },
         ),
-        title: Text('Хүргэлт',
-            style: GoogleFonts.rubik(color: Colors.white, fontSize: 13)),
-        backgroundColor: Colors.deepOrange,
+        title: Text(
+          'Дууссан',
+          style: GoogleFonts.rubik(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.filter_alt, color: Colors.white),
-            tooltip: 'Date filter',
+            icon: const Icon(Icons.filter_alt_outlined, color: Colors.white),
             onPressed: _pickDateRange,
           ),
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Clear filter',
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
             onPressed: _clearDateFilter,
           ),
           IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white),
-            tooltip: 'Logout',
-            onPressed: () async {
-              SharedPreferences prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => Login()),
-                    (route) => false,
-              );
-            },
+            icon: const Icon(Icons.logout_rounded, color: Colors.white),
+            onPressed: _logout,
           ),
         ],
       ),
-      backgroundColor: Colors.white,
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: _orange))
           : Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Text(
-              'Нийт хүргэлт: ${deliveries.length}',
-              style: GoogleFonts.rubik(
-                  fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ),
-          if (_startDate != null && _endDate != null)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Chip(
-                    label: Text(
-                      '${DateFormat('yyyy-MM-dd').format(_startDate!)} → ${DateFormat('yyyy-MM-dd').format(_endDate!)}',
-                      style: GoogleFonts.rubik(
-                          fontSize: 12, color: Colors.white),
-                    ),
-                    backgroundColor: Colors.blueGrey,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: _clearDateFilter,
-                  )
-                ],
-              ),
-            ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: deliveries.length,
-              itemBuilder: (context, index) {
-                final delivery = deliveries[index];
-                final isExpanded = expandedIndex == index;
-
-                return InkWell(
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) =>
-                            DeliveryDetailScreen(deliveryId: delivery.id),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Нийт хүргэлт',
+                        style: GoogleFonts.rubik(fontSize: 13, color: _muted),
                       ),
-                    );
-                  },
-                  child: Card(
-                    elevation: 4,
-                    margin: const EdgeInsets.symmetric(vertical: 8),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                expandedIndex = isExpanded ? null : index;
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: statusColor(delivery.status),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                delivery.status,
-                                style: GoogleFonts.rubik(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12),
-                              ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${deliveries.length}',
+                          style: GoogleFonts.rubik(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _orange,
+                          ),
+                        ),
+                      ),
+                      if (_startDate != null && _endDate != null) ...[
+                        const Spacer(),
+                        GestureDetector(
+                          onTap: _clearDateFilter,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFE8ECF1)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  '${DateFormat('MM.dd').format(_startDate!)}–${DateFormat('MM.dd').format(_endDate!)}',
+                                  style: GoogleFonts.rubik(
+                                      fontSize: 11, color: _navy),
+                                ),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.close, size: 14, color: _muted),
+                              ],
                             ),
                           ),
-                          if (isExpanded)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Wrap(
-                                spacing: 6,
-                                children: statuses.map((status) {
-                                  final selected =
-                                      status == delivery.status;
-                                  return ChoiceChip(
-                                    label: Text(status,
-                                        style: GoogleFonts.rubik(
-                                            fontSize: 11,
-                                            color: selected
-                                                ? Colors.white
-                                                : Colors.black)),
-                                    selected: selected,
-                                    selectedColor: Colors.blueAccent,
-                                    onSelected: (selected) {
-                                      if (selected)
-                                        updateStatus(index, status);
-                                    },
-                                  );
-                                }).toList(),
-                              ),
-                            ),
-                          const SizedBox(height: 10),
-                          Text(
-                              'Үүсэн: ${formatDate(delivery.createdDate)}',
-                              style: GoogleFonts.rubik(
-                                  color: Colors.grey[700], fontSize: 11)),
-                          const SizedBox(height: 10),
-                          Text('Утас: ${delivery.phone}',
-                              style: GoogleFonts.rubik(
-                                  color: Colors.blue,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 11)),
-                          const SizedBox(height: 6),
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    color: _orange,
+                    onRefresh: () async {
+                      setState(() => isLoading = true);
+                      await fetchDeliveries(
+                        startDate: _startDate,
+                        endDate: _endDate,
+                      );
+                    },
+                    child: deliveries.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
                             children: [
-                              Expanded(
-                                flex: 3,
-                                child: Text(delivery.comment,
-                                    style: GoogleFonts.rubik(
-                                        fontSize: 12,
-                                        fontStyle: FontStyle.italic)),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                flex: 2,
-                                child: Text('₮ ${delivery.price}',
-                                    textAlign: TextAlign.right,
-                                    style: GoogleFonts.rubik(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.green[700])),
+                              const SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  'Хүргэлт алга',
+                                  style: GoogleFonts.rubik(
+                                      fontSize: 15, color: _muted),
+                                ),
                               ),
                             ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+                            itemCount: deliveries.length,
+                            itemBuilder: (context, index) {
+                              return _item(deliveries[index], index);
+                            },
                           ),
-                          const SizedBox(height: 10),
-                          Text(delivery.address,
-                              style: GoogleFonts.rubik(
-                                  fontSize: 11, color: Colors.grey[800])),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _item(Delivery d, int index) {
+    final accent = statusColor(d.status);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE8ECF1)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DeliveryDetailScreen(deliveryId: d.id),
+            ),
+          );
+        },
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 4, color: accent),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            '${index + 1}. #${d.id}',
+                            style: GoogleFonts.rubik(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: _navy,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            statusLabel(d.status),
+                            style: GoogleFonts.rubik(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: accent,
+                            ),
+                          ),
                         ],
                       ),
-                    ),
+                      const SizedBox(height: 5),
+                      Text(
+                        d.address.isEmpty ? 'Хаяг байхгүй' : d.address,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.rubik(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: _navy,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      Row(
+                        children: [
+                          Text(
+                            d.phone.isEmpty ? '—' : d.phone,
+                            style: GoogleFonts.rubik(
+                              fontSize: 12,
+                              color: _muted,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            formatDate(d.createdDate),
+                            style: GoogleFonts.rubik(
+                              fontSize: 12,
+                              color: _muted,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            formatPrice(d.priceValue),
+                            style: GoogleFonts.rubik(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: _orange,
+                            ),
+                          ),
+                          Icon(Icons.chevron_right_rounded,
+                              size: 18, color: Colors.grey.shade400),
+                        ],
+                      ),
+                    ],
                   ),
-                );
-              },
-            ),
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

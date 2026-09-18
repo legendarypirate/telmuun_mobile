@@ -69,85 +69,159 @@ class _GoodListScreenState extends State<GoodListScreen> {
     }
   }
 
+  static const Color _orange = Color(0xFFFF6A1A);
+  static const Color _navy = Color(0xFF0F2744);
+  static const Color _bg = Color(0xFFF5F6F8);
+  static const Color _muted = Color(0xFF7A8699);
+  static const Color _line = Color(0xFFE8ECF1);
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF5F5F5),
+      backgroundColor: _bg,
       appBar: AppBar(
+        elevation: 0,
         automaticallyImplyLeading: false,
-        backgroundColor: Colors.deepOrange,
-        title: Text('Барааны жагсаалт',
-            style: GoogleFonts.rubik(fontSize: 15, color: Colors.white)),
+        backgroundColor: _orange,
         centerTitle: true,
-        elevation: 2,
+        title: Text(
+          'Агуулах',
+          style: GoogleFonts.rubik(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            onPressed: () {
+              setState(() => isLoading = true);
+              fetchGoods();
+            },
+          ),
+        ],
       ),
       body: isLoading
-          ? Center(child: CircularProgressIndicator(color: Colors.deepOrange))
-          : goods.isEmpty
-          ? Center(
-        child: Text(
-          'Бараа олдсонгүй',
-          style: GoogleFonts.rubik(fontSize: 16, color: Colors.grey),
-        ),
-      )
-          : ListView.builder(
-        padding: EdgeInsets.all(16),
-        itemCount: goods.length,
-        itemBuilder: (context, index) {
-          final item = goods[index];
-          return Container(
-            margin: EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 8,
-                  offset: Offset(0, 4),
+          ? const Center(child: CircularProgressIndicator(color: _orange))
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Нийт бараа',
+                        style: GoogleFonts.rubik(fontSize: 13, color: _muted),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${goods.length}',
+                          style: GoogleFonts.rubik(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _orange,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    color: _orange,
+                    onRefresh: () async {
+                      setState(() => isLoading = true);
+                      await fetchGoods();
+                    },
+                    child: goods.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  'Бараа олдсонгүй',
+                                  style: GoogleFonts.rubik(
+                                      fontSize: 15, color: _muted),
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 88),
+                            itemCount: goods.length,
+                            itemBuilder: (context, index) {
+                              final item = goods[index];
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 12),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: _line),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: _orange.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: const Icon(
+                                        Icons.inventory_2_outlined,
+                                        color: _orange,
+                                        size: 18,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        item['name'] ?? 'Нэргүй',
+                                        style: GoogleFonts.rubik(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: _navy,
+                                        ),
+                                      ),
+                                    ),
+                                    Text(
+                                      '${item['stock'] ?? 0} ш',
+                                      style: GoogleFonts.rubik(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: _orange,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
                 ),
               ],
             ),
-            child: ListTile(
-              contentPadding:
-              EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              leading: CircleAvatar(
-                backgroundColor: Colors.deepOrange.withOpacity(0.2),
-                child: Icon(Icons.shopping_basket,
-                    color: Colors.deepOrange),
-              ),
-              title: Text(
-                item['name'] ?? 'No name',
-                style: GoogleFonts.rubik(
-                    fontSize: 16, fontWeight: FontWeight.w500),
-              ),
-              trailing: Container(
-                padding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.deepOrange,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '${item['stock'] ?? 0} ш',
-                  style: GoogleFonts.rubik(
-                      color: Colors.white, fontSize: 14),
-                ),
-              ),
-            ),
-          );
-        },
-      ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'merchant_ware_fab',
         onPressed: () {
           showDialog(
             context: context,
-            builder: (context) => _buildGoodFormDialog(),
+            builder: (_) => _buildGoodFormDialog(),
           );
         },
-        backgroundColor: Colors.deepOrange,
-        child: Icon(Icons.add, color: Colors.white),
-        tooltip: 'Шинэ бараа нэмэх',
+        backgroundColor: _orange,
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

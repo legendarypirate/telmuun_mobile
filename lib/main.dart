@@ -1,110 +1,84 @@
-import 'dart:io';
-
-// import 'package:sura_driver/screen/mainforavdag.dart';
 import 'package:flutter/material.dart';
-// import 'package:sura_driver/screen/login.dart';
-// import 'package:sura_driver/mainscreen.dart';
-// import 'package:sura_driver/screen/settings.dart';
-// import 'firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sura_driver/screen/login.dart';
-import 'package:sura_driver/screen/orderdrivermain.dart';
-import 'firebase_options.dart';
+
+import 'customerscreen.dart';
 import 'mainscreen.dart';
 
-class MyHttpOverrides extends HttpOverrides {
-  @override
-  HttpClient createHttpClient(SecurityContext? context) {
-    return super.createHttpClient(context)
-      ..badCertificateCallback =
-          (X509Certificate cert, String host, int port) => true;
-  }
-}
-
 void main() async {
-
-  runApp(MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  // This widget is the root of your application.
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Test App',
+      title: 'Тэлмүүн',
       debugShowCheckedModeBanner: false,
-      home: CheckAuth(),
+      home: const CheckAuth(),
     );
   }
 }
 
 class CheckAuth extends StatefulWidget {
+  const CheckAuth({super.key});
+
   @override
-  _CheckAuthState createState() => _CheckAuthState();
+  State<CheckAuth> createState() => _CheckAuthState();
 }
 
 class _CheckAuthState extends State<CheckAuth> {
-  bool isAuth = false;
-  String types = '';
-  String? fcmToken;
+  bool _loading = true;
+  Widget _home = Login();
 
-  String? username;
   @override
   void initState() {
     super.initState();
-    initializeData();
+    _restoreSession();
   }
 
-  Future<void> initializeData() async {
-    WidgetsFlutterBinding.ensureInitialized();
+  Future<void> _restoreSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    final username = prefs.getString('username');
+    final role = prefs.getInt('role');
+    final userId = prefs.getInt('user_id');
 
-    // Ensure Firebase has been initialized before accessing any Firebase service
-    _checkIfLoggedIn();
-    _getFCMToken();
-  }
+    Widget next = Login();
 
-  Future getEmail() async {
-    SharedPreferences preferences = await SharedPreferences.getInstance();
+    final loggedIn = (token != null && token.isNotEmpty) ||
+        (username != null && username.isNotEmpty);
+
+    if (loggedIn && userId != null && role != null) {
+      if (role == 3) {
+        next = MainScreen(id: userId);
+      } else if (role == 2) {
+        next = Customerscreen(id: userId);
+      }
+    }
+
+    if (!mounted) return;
     setState(() {
-      username = preferences.getString('username');
+      _home = next;
+      _loading = false;
     });
-  }
-
-  Future<void> _getFCMToken() async {
-
-  }
-
-  void _checkIfLoggedIn() async {
-    getEmail();
-    SharedPreferences localStorage = await SharedPreferences.getInstance();
-    var token = localStorage.getString('username');
-    if (token != null) {
-      setState(() {
-        isAuth = true;
-      });
-    }
-    if (localStorage.containsKey("username")) {
-      username = localStorage.getString("username");
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    Widget child;
-
-    if (username == null) {
-      child = Login();
-      print("qqq");
-    } else {
-      if (types == '1') {
-        child = MainScreen(id: 1);
-      } else {
-        child = MainScreen(id: 1);
-      }
-      print("sss");
+    if (_loading) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFFFF6A1A),
+          ),
+        ),
+      );
     }
-    return Scaffold(
-      body: child,
-    );
+    return _home;
   }
 }

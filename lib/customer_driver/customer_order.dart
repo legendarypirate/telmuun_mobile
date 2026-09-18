@@ -1,8 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
 
 import '../color/color.dart';
 
@@ -13,14 +14,13 @@ class CustomerOrder extends StatefulWidget {
 
 class _CustomerOrderState extends State<CustomerOrder> {
   List<dynamic> orders = [];
-  int? expandedIndex;
+  bool isLoading = true;
 
-  final List<String> statuses = [
-    'Pending',
-    'Confirmed',
-    'Delivered',
-    'Cancelled'
-  ];
+  static const Color _orange = Color(0xFFFF6A1A);
+  static const Color _navy = Color(0xFF0F2744);
+  static const Color _bg = Color(0xFFF5F6F8);
+  static const Color _muted = Color(0xFF7A8699);
+  static const Color _line = Color(0xFFE8ECF1);
 
   @override
   void initState() {
@@ -29,287 +29,349 @@ class _CustomerOrderState extends State<CustomerOrder> {
   }
 
   Future<void> fetchOrders() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    int? userId = prefs.getInt('user_id');
-    final response = await http
-        .get(Uri.parse(Url.url + '/api/mobile/order/merchant?user_id=$userId'));
-
-    if (response.statusCode == 200) {
-      final jsonBody = json.decode(response.body);
-      if (jsonBody['success'] == true) {
-        setState(() {
-          orders = jsonBody['data'];
-        });
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getInt('user_id');
+    try {
+      final response = await http.get(
+        Uri.parse('${Url.url}/api/mobile/order/merchant?user_id=$userId'),
+      );
+      if (response.statusCode == 200) {
+        final jsonBody = json.decode(response.body);
+        if (jsonBody['success'] == true) {
+          setState(() {
+            orders = jsonBody['data'] ?? [];
+            isLoading = false;
+          });
+          return;
+        }
       }
-    } else {
-      print('Failed to load orders: ${response.statusCode}');
+      setState(() => isLoading = false);
+    } catch (_) {
+      setState(() => isLoading = false);
     }
   }
 
   Color statusColor(int status) {
     switch (status) {
       case 1:
-        return Colors.orange; // Pending
+        return const Color(0xFFE5484D);
       case 2:
-        return Colors.blue; // Confirmed
+        return const Color(0xFF1B9BE4);
       case 3:
-        return Colors.green; // Delivered
+        return const Color(0xFF1FA97A);
       case 4:
-        return Colors.red; // Cancelled
+        return const Color(0xFF9AA5B1);
       default:
-        return Colors.grey;
+        return _muted;
     }
   }
 
   String statusText(int status) {
     switch (status) {
       case 1:
-        return 'шинэ';
+        return 'Шинэ';
       case 2:
-        return 'жолоочид';
+        return 'Жолоочид';
       case 3:
-        return 'хүргэгдсэн';
+        return 'Хүргэгдсэн';
       case 4:
-        return 'буцаасан';
+        return 'Буцаасан';
       default:
-        return 'Unknown';
+        return '—';
     }
-  }
-
-  void updateStatus(int index, int newStatus) {
-    setState(() {
-      orders[index]['status'] = newStatus;
-      expandedIndex = null;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: _bg,
       appBar: AppBar(
+        elevation: 0,
         automaticallyImplyLeading: false,
-        title: Text('Татан авалт',
-            style: GoogleFonts.rubik(color: Colors.white, fontSize: 15)),
-        backgroundColor: Colors.deepOrange,
+        backgroundColor: _orange,
+        centerTitle: true,
+        title: Text(
+          'Захиалга',
+          style: GoogleFonts.rubik(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            onPressed: () {
+              setState(() => isLoading = true);
+              fetchOrders();
+            },
+          ),
+        ],
       ),
-      backgroundColor: Colors.white,
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12),
-        itemCount: orders.length,
-        itemBuilder: (context, index) {
-          final order = orders[index];
-          final isExpanded = expandedIndex == index;
-          return Card(
-            elevation: 3,
-            shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Merchant & Status
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator(color: _orange))
+          : Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+                  child: Row(
                     children: [
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            expandedIndex = isExpanded ? null : index;
-                          });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: statusColor(order['status']),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Text(
-                            statusText(order['status']),
-                            style: GoogleFonts.rubik(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600),
+                      Text(
+                        'Нийт захиалга',
+                        style: GoogleFonts.rubik(fontSize: 13, color: _muted),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: _orange.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${orders.length}',
+                          style: GoogleFonts.rubik(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: _orange,
                           ),
                         ),
                       ),
                     ],
                   ),
-
-                  if (isExpanded)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Wrap(
-                        spacing: 8,
-                        children: List.generate(statuses.length, (i) {
-                          final selected = (i + 1) == order['status'];
-                          return ChoiceChip(
-                            label: Text(
-                              statuses[i],
-                              style: GoogleFonts.rubik(
-                                  fontSize: 12,
-                                  color:
-                                  selected ? Colors.white : Colors.black),
-                            ),
-                            selected: selected,
-                            selectedColor: Colors.blueAccent,
-                            onSelected: (_) => updateStatus(index, i + 1),
-                          );
-                        }),
-                      ),
-                    ),
-
-                  const SizedBox(height: 8),
-                  Text(order['address'],
-                      style: GoogleFonts.rubik(
-                          fontSize: 13, color: Colors.grey[800])),
-                  const SizedBox(height: 6),
-                  Text('📞 ${order['phone']}',
-                      style: GoogleFonts.rubik(
-                          fontSize: 13, color: Colors.grey[700])),
-                  const SizedBox(height: 6),
-                  Text('💬 ${order['comment']}',
-                      style: GoogleFonts.rubik(
-                          fontSize: 13,
-                          fontStyle: FontStyle.italic,
-                          color: Colors.grey[600])),
-                ],
-              ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    color: _orange,
+                    onRefresh: () async {
+                      setState(() => isLoading = true);
+                      await fetchOrders();
+                    },
+                    child: orders.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              const SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  'Захиалга алга',
+                                  style: GoogleFonts.rubik(
+                                      fontSize: 15, color: _muted),
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(12, 0, 12, 88),
+                            itemCount: orders.length,
+                            itemBuilder: (context, index) {
+                              return _item(orders[index], index);
+                            },
+                          ),
+                  ),
+                ),
+              ],
             ),
-          );
-        },
-      ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'merchant_order_fab',
         onPressed: () {
           showDialog(
             context: context,
-            builder: (context) => _buildOrderFormDialog(),
+            builder: (_) => _buildOrderFormDialog(),
           );
         },
-        backgroundColor: Colors.deepOrange,
-        child: Icon(Icons.add, color: Colors.white),
-        tooltip: 'Шинэ хүргэлт нэмэх',
+        backgroundColor: _orange,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _item(dynamic order, int index) {
+    final status = order['status'] is int
+        ? order['status'] as int
+        : int.tryParse('${order['status']}') ?? 0;
+    final accent = statusColor(status);
+    final comment = (order['comment'] ?? '').toString().trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: accent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '${index + 1}. ${statusText(status)}',
+                          style: GoogleFonts.rubik(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: accent,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          (order['phone'] ?? '—').toString(),
+                          style: GoogleFonts.rubik(
+                            fontSize: 12,
+                            color: _muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      (order['address'] ?? '').toString().isEmpty
+                          ? 'Хаяг байхгүй'
+                          : order['address'].toString(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.rubik(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: _navy,
+                      ),
+                    ),
+                    if (comment.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        comment,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.rubik(
+                          fontSize: 12,
+                          color: _muted,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildOrderFormDialog() {
-    final _formKey = GlobalKey<FormState>();
-    final TextEditingController phoneController = TextEditingController();
-    final TextEditingController addressController = TextEditingController();
-    final TextEditingController commentController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final phoneController = TextEditingController();
+    final addressController = TextEditingController();
+    final commentController = TextEditingController();
 
-    InputDecoration _inputDecoration(String label) {
+    InputDecoration inputDecoration(String label) {
       return InputDecoration(
         labelText: label,
-        labelStyle: GoogleFonts.rubik(color: Colors.deepOrange),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.deepOrange.shade200, width: 1.5),
+        labelStyle: GoogleFonts.rubik(color: _muted, fontSize: 13),
+        filled: true,
+        fillColor: _bg,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.deepOrange, width: 2),
           borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _orange),
         ),
-        contentPadding:
-        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        filled: true,
-        fillColor: Colors.deepOrange.shade50.withOpacity(0.3),
       );
     }
 
     return AlertDialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       backgroundColor: Colors.white,
       title: Text(
         'Шинэ захиалга',
         style: GoogleFonts.rubik(
           fontWeight: FontWeight.w700,
-          fontSize: 20,
-          color: Colors.deepOrange.shade700,
+          fontSize: 17,
+          color: _navy,
         ),
       ),
       content: SingleChildScrollView(
         child: Form(
-          key: _formKey,
+          key: formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextFormField(
                 controller: phoneController,
                 keyboardType: TextInputType.phone,
-                decoration: _inputDecoration('Утасны дугаар'),
+                style: GoogleFonts.rubik(fontSize: 14),
+                decoration: inputDecoration('Утасны дугаар'),
                 validator: (value) =>
-                value == null || value.isEmpty ? 'Утас оруулна уу' : null,
+                    value == null || value.isEmpty ? 'Утас оруулна уу' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: addressController,
-                decoration: _inputDecoration('Хаяг'),
+                style: GoogleFonts.rubik(fontSize: 14),
+                decoration: inputDecoration('Хаяг'),
                 validator: (value) =>
-                value == null || value.isEmpty ? 'Хаяг оруулна уу' : null,
+                    value == null || value.isEmpty ? 'Хаяг оруулна уу' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: commentController,
                 maxLines: 3,
-                decoration: _inputDecoration('Тайлбар'),
+                style: GoogleFonts.rubik(fontSize: 14),
+                decoration: inputDecoration('Тайлбар'),
               ),
             ],
           ),
         ),
       ),
-      actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       actions: [
         TextButton(
-          style: TextButton.styleFrom(
-            foregroundColor: Colors.deepOrange,
-            textStyle: GoogleFonts.rubik(fontWeight: FontWeight.w600),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text('Болих'),
+          onPressed: () => Navigator.pop(context),
+          child: Text('Болих', style: GoogleFonts.rubik(color: _muted)),
         ),
         ElevatedButton(
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepOrange,
+            backgroundColor: _orange,
+            foregroundColor: Colors.white,
+            elevation: 0,
             shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            textStyle:
-            GoogleFonts.rubik(fontWeight: FontWeight.w700, fontSize: 16),
-            shadowColor: Colors.deepOrangeAccent,
-            elevation: 5,
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
           onPressed: () async {
-            if (_formKey.currentState!.validate()) {
-              SharedPreferences prefs = await SharedPreferences.getInstance();
-              int? userId = prefs.getInt('user_id');
-
-              final response = await http.post(
-                Uri.parse('${Url.url}/api/order'),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({
-                  'merchant_id': userId,
-                  'phone': phoneController.text,
-                  'address': addressController.text,
-                  'comment': commentController.text,
-                }),
-              );
-              print(response.statusCode);
-              if (response.statusCode == 200 || response.statusCode == 201) {
-                Navigator.of(context).pop();
-                fetchOrders(); // refresh the order list
-              } else {
-                print('Error creating order: ${response.body}');
-              }
+            if (!(formKey.currentState?.validate() ?? false)) return;
+            final prefs = await SharedPreferences.getInstance();
+            final userId = prefs.getInt('user_id');
+            final response = await http.post(
+              Uri.parse('${Url.url}/api/order'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'merchant_id': userId,
+                'phone': phoneController.text,
+                'address': addressController.text,
+                'comment': commentController.text,
+              }),
+            );
+            if (response.statusCode == 200 || response.statusCode == 201) {
+              if (!mounted) return;
+              Navigator.pop(context);
+              setState(() => isLoading = true);
+              fetchOrders();
             }
           },
-          child: Text(
-            'Хадгалах',
-            style: GoogleFonts.rubik(color: Colors.white),
-          ),
+          child: Text('Хадгалах', style: GoogleFonts.rubik()),
         ),
       ],
     );

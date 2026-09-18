@@ -1,7 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../color/color.dart';
@@ -14,29 +15,30 @@ class Customersummary extends StatefulWidget {
 class _CustomersummaryState extends State<Customersummary> {
   late Future<Map<String, dynamic>> futureStats;
 
+  static const Color _orange = Color(0xFFFF6A1A);
+  static const Color _navy = Color(0xFF0F2744);
+  static const Color _bg = Color(0xFFF5F6F8);
+  static const Color _muted = Color(0xFF7A8699);
+  static const Color _line = Color(0xFFE8ECF1);
+
   Future<Map<String, dynamic>> fetchStats() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('user_id');
 
     if (userId == null) {
-      throw Exception('Хэрэглэгч олдсонгүй (user_id is null)');
+      throw Exception('Хэрэглэгч олдсонгүй');
     }
 
     final response = await http.get(
-      Uri.parse(
-          Url.url+'/api/delivery/statistic?merchant_id=$userId'),
+      Uri.parse('${Url.url}/api/delivery/statistic?merchant_id=$userId'),
     );
 
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
-      if (data['success']) {
-        return data;
-      } else {
-        throw Exception('Амжилтгүй статистик');
-      }
-    } else {
-      throw Exception('API дуудлагад алдаа гарлаа');
+      if (data['success'] == true) return data;
+      throw Exception('Амжилтгүй статистик');
     }
+    throw Exception('API алдаа');
   }
 
   @override
@@ -48,22 +50,43 @@ class _CustomersummaryState extends State<Customersummary> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
+      backgroundColor: _bg,
       appBar: AppBar(
+        elevation: 0,
         automaticallyImplyLeading: false,
+        backgroundColor: _orange,
+        centerTitle: true,
         title: Text(
-          'Нийт мэдээлэл',
-          style: GoogleFonts.rubik(color: Colors.white, fontSize: 15),
+          'Мэдээлэл',
+          style: GoogleFonts.rubik(
+            color: Colors.white,
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        backgroundColor: Colors.deepOrange,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+            onPressed: () {
+              setState(() => futureStats = fetchStats());
+            },
+          ),
+        ],
       ),
       body: FutureBuilder<Map<String, dynamic>>(
         future: futureStats,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          } else if (snapshot.hasError) {
-            return Center(child: Text('Алдаа: ${snapshot.error}'));
+            return const Center(
+                child: CircularProgressIndicator(color: _orange));
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: Text(
+                'Алдаа гарлаа',
+                style: GoogleFonts.rubik(color: _muted),
+              ),
+            );
           }
 
           final data = snapshot.data!;
@@ -72,54 +95,87 @@ class _CustomersummaryState extends State<Customersummary> {
           final goods = data['goods_today'] ?? 0;
           final successRate = data['success_rate_percent'] ?? 0;
 
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: GridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 16,
-              crossAxisSpacing: 16,
-              childAspectRatio: 1.2,
-              children: [
-                _buildSummaryCard(
-                    'хүргэлт', deliveries, Colors.blue, Icons.local_shipping),
-                _buildSummaryCard(
-                    'захиалга', orders, Colors.green, Icons.receipt_long),
-                _buildSummaryCard(
-                    'бараа', goods, Colors.deepPurple, Icons.inventory),
-                _buildSummaryCard(
-                    'Амжилттай', successRate, Colors.orange, Icons.percent),
-              ],
-            ),
+          return ListView(
+            padding: const EdgeInsets.all(14),
+            children: [
+              Text(
+                'Өнөөдрийн тойм',
+                style: GoogleFonts.rubik(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _navy,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _statTile(
+                Icons.local_shipping_outlined,
+                'Хүргэлт',
+                '$deliveries',
+                const Color(0xFF1B9BE4),
+              ),
+              _statTile(
+                Icons.receipt_long_outlined,
+                'Захиалга',
+                '$orders',
+                const Color(0xFF1FA97A),
+              ),
+              _statTile(
+                Icons.inventory_2_outlined,
+                'Бараа',
+                '$goods',
+                const Color(0xFF7C3AED),
+              ),
+              _statTile(
+                Icons.percent_rounded,
+                'Амжилттай',
+                '$successRate%',
+                _orange,
+              ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildSummaryCard(
-      String label, int value, Color color, IconData icon) {
+  Widget _statTile(IconData icon, String label, String value, Color color) {
     return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.3)),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _line),
       ),
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
         children: [
-          Icon(icon, size: 35, color: color),
-          const SizedBox(height: 6),
-          Text(
-            '$value',
-            style: GoogleFonts.rubik(
-                fontSize: 24, fontWeight: FontWeight.bold, color: color),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: color, size: 20),
           ),
-          const SizedBox(height: 2),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: GoogleFonts.rubik(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: _navy,
+              ),
+            ),
+          ),
           Text(
-            label,
+            value,
             style: GoogleFonts.rubik(
-                fontSize: 14, fontWeight: FontWeight.w600, color: color),
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
           ),
         ],
       ),

@@ -1,26 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sura_driver/deliverydriver/donedelivery.dart';
 
 import 'customer_driver/CustomerSummary.dart';
 import 'customer_driver/customer_order.dart';
 import 'customer_driver/delivery.dart';
-import 'deliverydriver/delivery.dart';
-import 'deliverydriver/homefordel.dart';
 import 'deliverydriver/ware.dart';
-import 'orderdriver/doneorder.dart';
-import 'orderdriver/order.dart';
-import 'package:http/http.dart' as http;
-
-import 'package:sura_driver/color/color.dart';
 
 class Customerscreen extends StatefulWidget {
-  int id;
+  final int id;
 
-  Customerscreen({
-    required this.id,
-  });
+  Customerscreen({required this.id});
 
   @override
   State<Customerscreen> createState() => _CustomerscreenState();
@@ -28,7 +17,7 @@ class Customerscreen extends StatefulWidget {
 
 class _CustomerscreenState extends State<Customerscreen> {
   int _selectedIndex = 0;
-  late List<Widget> _widgetOptions;
+  late final List<Widget> _widgetOptions;
 
   @override
   void initState() {
@@ -41,49 +30,46 @@ class _CustomerscreenState extends State<Customerscreen> {
     ];
   }
 
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(
-        child: _widgetOptions.elementAt(_selectedIndex),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: _widgetOptions,
       ),
       bottomNavigationBar: BottomNavigationBar(
+        type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.white,
+        elevation: 8,
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
-            icon: Icon(Icons.local_shipping), // 🚚 Хүргэлт (Delivery)
+            icon: Icon(Icons.local_shipping_outlined),
+            activeIcon: Icon(Icons.local_shipping),
             label: 'Хүргэлт',
-            backgroundColor: Colors.white,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.receipt_long), // 📋 Захиалга (Orders)
+            icon: Icon(Icons.receipt_long_outlined),
+            activeIcon: Icon(Icons.receipt_long),
             label: 'Захиалга',
-            backgroundColor: Colors.white,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.warehouse), // 🏬 Агуулах (Warehouse)
+            icon: Icon(Icons.warehouse_outlined),
+            activeIcon: Icon(Icons.warehouse),
             label: 'Агуулах',
-            backgroundColor: Colors.white,
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.info), // ℹ️ Мэдээлэл (Info)
+            icon: Icon(Icons.bar_chart_outlined),
+            activeIcon: Icon(Icons.bar_chart),
             label: 'Мэдээлэл',
-            backgroundColor: Colors.white,
           ),
         ],
-
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.black,
+        selectedItemColor: const Color(0xFFFF6A1A),
         unselectedItemColor: Colors.grey,
-        selectedLabelStyle: GoogleFonts.rubik(fontSize: 12, fontWeight: FontWeight.w500),
+        selectedLabelStyle:
+            GoogleFonts.rubik(fontSize: 12, fontWeight: FontWeight.w600),
         unselectedLabelStyle: GoogleFonts.rubik(fontSize: 11),
-        onTap: _onItemTapped,
+        onTap: (index) => setState(() => _selectedIndex = index),
       ),
     );
   }

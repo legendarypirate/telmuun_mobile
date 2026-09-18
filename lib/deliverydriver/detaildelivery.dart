@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:image_picker/image_picker.dart';
@@ -25,193 +26,49 @@ class _DeliveryDetailScreenState extends State<DeliveryDetailScreen> {
   bool isLoading = true;
   String? error;
   List<dynamic> items = [];
-  List<dynamic> statuses = [];
   int? selectedStatusId;
-  TextEditingController commentController = TextEditingController();
+  final TextEditingController commentController = TextEditingController();
   File? _capturedImage;
   final ImagePicker _picker = ImagePicker();
+  bool _submitting = false;
+
+  static const Color _orange = Color(0xFFFF6A1A);
+  static const Color _navy = Color(0xFF0F2744);
+  static const Color _bg = Color(0xFFF5F6F8);
+  static const Color _muted = Color(0xFF7A8699);
+  static const Color _line = Color(0xFFE8ECF1);
+
+  @override
+  void initState() {
+    super.initState();
+    fetchDelivery().then((_) => fetchItems());
+  }
+
+  @override
+  void dispose() {
+    commentController.dispose();
+    super.dispose();
+  }
 
   Future<void> fetchItems() async {
     final url = Uri.parse('${Url.url}/api/delivery/${widget.deliveryId}/items');
-
     try {
       final response = await http.get(url);
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
         if (jsonResponse['success'] == true) {
-          setState(() {
-            items = jsonResponse['data'];
-          });
+          setState(() => items = jsonResponse['data'] ?? []);
         }
-      } else {
-        print('Item fetch failed: ${response.statusCode}');
       }
     } catch (e) {
-      print('Item fetch error: $e');
+      debugPrint('Item fetch error: $e');
     }
-  }
-
-  Future<void> _callPhoneNumber(String phoneNumber) async {
-    final Uri phoneUri = Uri(scheme: 'tel', path: phoneNumber);
-    if (await canLaunchUrl(phoneUri)) {
-      await launchUrl(phoneUri);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Утасны дугаарыг дуудахад алдаа гарлаа')),
-      );
-    }
-  }
-
-  Future<void> _takePicture() async {
-    final XFile? image = await _picker.pickImage(
-      source: ImageSource.camera,
-      maxWidth: 800,
-      maxHeight: 600,
-      imageQuality: 80,
-    );
-
-    if (image != null) {
-      setState(() {
-        _capturedImage = File(image.path);
-      });
-    }
-  }
-
-
-  Future<void> _submitWithImage() async {
-    if (selectedStatusId == null) return;
-
-    if (selectedStatusId == 3 && _capturedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Зураг авах шаардлагатай')),
-      );
-      return;
-    }
-
-    try {
-      final url = Uri.parse('${Url.url}/api/mobile/delivery/complete/${delivery!['id']}');
-
-      // Log for postpone button (status = 10)
-      if (selectedStatusId == 10) {
-        print('======= ХОЙШЛУУЛАХ REQUEST =======');
-        print('URL: $url');
-        print('Delivery ID: ${delivery!['id']}');
-        print('Status ID: $selectedStatusId');
-        print('Comment: ${commentController.text.trim()}');
-        print('Image: ${_capturedImage?.path ?? "No image"}');
-      }
-
-      var request = http.MultipartRequest('POST', url);
-
-      // Add text fields
-      request.fields['status'] = selectedStatusId.toString();
-      request.fields['driver_comment'] = commentController.text.trim();
-
-      // Log headers and payload for postpone
-      if (selectedStatusId == 10) {
-        print('--- Request Headers ---');
-        request.headers.forEach((key, value) {
-          print('$key: $value');
-        });
-
-        print('--- Request Payload ---');
-        print('status: ${selectedStatusId.toString()}');
-        print('driver_comment: ${commentController.text.trim()}');
-        print('--- End Payload ---');
-      }
-
-      // Add image if exists
-      if (_capturedImage != null) {
-        var multipartFile = await http.MultipartFile.fromPath(
-          'image',
-          _capturedImage!.path,
-          filename: 'delivery_${delivery!['id']}_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        );
-        request.files.add(multipartFile);
-
-        // Log image info for postpone
-        if (selectedStatusId == 10) {
-          print('Image attached: ${_capturedImage!.path}');
-          print('Image size: ${await _capturedImage!.length()} bytes');
-        }
-      }
-
-      var response = await request.send();
-      var responseData = await response.stream.bytesToString();
-      var jsonResponse = json.decode(responseData);
-
-      // Log response for postpone
-      if (selectedStatusId == 10) {
-        print('--- Response ---');
-        print('Status Code: ${response.statusCode}');
-        print('Response Body: $responseData');
-        print('Parsed JSON: $jsonResponse');
-        print('======= END REQUEST =======');
-      }
-
-      if (response.statusCode == 200 && jsonResponse['success'] == true) {
-        // Log success for postpone
-        if (selectedStatusId == 10) {
-          print('✅ Хойшлуулах амжилттай!');
-          if (jsonResponse['data'] != null) {
-            print('New scheduled date: ${jsonResponse['data']['scheduled_delivery_date']}');
-            print('Postponed from: ${jsonResponse['data']['postponed_from']}');
-          }
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Хүргэлт амжилттай бүртгэгдлээ')),
-        );
-
-        final prefs = await SharedPreferences.getInstance();
-        final userId = prefs.getInt('user_id');
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (context) => MainScreen(id: userId!)),
-                (route) => false,
-          );
-        }
-      } else {
-        // Log error for postpone
-        if (selectedStatusId == 10) {
-          print('❌ Хойшлуулах алдаа гарлаа!');
-          print('Error message: ${jsonResponse['message']}');
-        }
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(jsonResponse['message'] ?? 'Алдаа гарлаа')),
-        );
-      }
-    } catch (e) {
-      // Log exception for postpone
-      if (selectedStatusId == 10) {
-        print('❌ Хойшлуулах Exception: $e');
-        print('Stack trace: ${e.toString()}');
-      }
-
-      print('Delivery completion error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Алдаа гарлаа: $e')),
-      );
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    fetchDelivery();
-    fetchDelivery().then((_) {
-      fetchItems();
-    });
   }
 
   Future<void> fetchDelivery() async {
-    final url = Uri.parse(Url.url + '/api/delivery/${widget.deliveryId}');
-
+    final url = Uri.parse('${Url.url}/api/delivery/${widget.deliveryId}');
     try {
       final response = await http.get(url);
-
       if (response.statusCode == 200) {
         final jsonResponse = json.decode(response.body);
         if (jsonResponse['success'] == true) {
@@ -222,513 +79,642 @@ class _DeliveryDetailScreenState extends State<DeliveryDetailScreen> {
           });
         } else {
           setState(() {
-            error = 'Failed to load delivery details';
+            error = 'Мэдээлэл ачаалж чадсангүй';
             isLoading = false;
           });
         }
       } else {
         setState(() {
-          error = 'Server error: ${response.statusCode}';
+          error = 'Серверийн алдаа: ${response.statusCode}';
           isLoading = false;
         });
       }
     } catch (e) {
       setState(() {
-        error = 'Error: $e';
+        error = 'Алдаа гарлаа';
         isLoading = false;
       });
     }
   }
 
-  String formatDate(String isoDate) {
-    try {
-      final dateTime = DateTime.parse(isoDate);
-      return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')} '
-          '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return isoDate;
+  Future<void> _callPhoneNumber(String phoneNumber) async {
+    final cleaned = phoneNumber.replaceAll(RegExp(r'[^\d+]'), '');
+    if (cleaned.isEmpty) {
+      _toast('Утасны дугаар олдсонгүй');
+      return;
+    }
+    final uri = Uri(scheme: 'tel', path: cleaned);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      _toast('Утасны дугаарыг дуудахад алдаа гарлаа');
     }
   }
 
-  void _showPostponeSheet() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade400,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
-              Text('Тайлбар нэмэх',
-                  style: GoogleFonts.rubik(
-                      fontSize: 18, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 16),
-              TextField(
-                controller: commentController,
-                maxLines: 3,
-                decoration: InputDecoration(
-                  labelText: 'Тайлбар',
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-
-              if (_capturedImage != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  'Авсан зураг:',
-                  style: GoogleFonts.rubik(fontWeight: FontWeight.w500),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  height: 100,
-                  width: 100,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Image.file(
-                    _capturedImage!,
-                    fit: BoxFit.cover,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  icon: Icon(Icons.camera_alt, size: 16),
-                  label: Text('Зураг дахин авах'),
-                  onPressed: _takePicture,
-                ),
-              ] else if (selectedStatusId == 3) ...[
-                const SizedBox(height: 16),
-                ElevatedButton.icon(
-                  icon: Icon(Icons.camera_alt),
-                  label: Text('Зураг авах'),
-                  onPressed: _takePicture,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey.shade700,
-                        side: BorderSide(color: Colors.grey.shade400),
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _capturedImage = null;
-                        });
-                        Navigator.pop(context);
-                      },
-                      child: const Text('Болих'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.deepOrange,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () async {
-                        if (selectedStatusId == 3 && _capturedImage == null) {
-                          OverlayEntry entry = OverlayEntry(
-                            builder: (context) => Positioned(
-                              top: 50,
-                              left: 20,
-                              right: 20,
-                              child: Material(
-                                color: Colors.transparent,
-                                child: Container(
-                                  padding: EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    'Зураг авах шаардлагатай',
-                                    style: TextStyle(color: Colors.white),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          );
-
-                          Overlay.of(context).insert(entry);
-                          await Future.delayed(Duration(seconds: 2));
-                          entry.remove();
-                          return;
-                        }
-
-                        Navigator.pop(context);
-                        await _submitWithImage();
-                      },
-                      child: Text('Хадгалах',
-                          style: GoogleFonts.rubik(color: Colors.white)),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+  Future<void> _takePicture() async {
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.camera,
+      maxWidth: 800,
+      maxHeight: 600,
+      imageQuality: 80,
     );
+    if (image != null) {
+      setState(() => _capturedImage = File(image.path));
+    }
   }
 
-  Widget _actionButton(
-      String label, IconData icon, Color color, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: ElevatedButton.styleFrom(
+  void _toast(String msg, {Color? color}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg, style: GoogleFonts.rubik()),
         backgroundColor: color,
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        textStyle: GoogleFonts.rubik(fontSize: 11),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
 
-  Future<bool?> showConfirmationDialog(BuildContext context, String message) {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Row(
-            children: [
-              Icon(Icons.warning_amber_rounded, color: Colors.deepOrange),
-              SizedBox(width: 8),
-              Text(
-                'Анхааруулга',
-                style: GoogleFonts.rubik(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 20,
-                  color: Colors.deepOrange,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            message,
-            style: GoogleFonts.rubik(
-              fontSize: 16,
-              color: Colors.black87,
-            ),
-          ),
-          actionsPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          actions: [
-            TextButton.icon(
-              icon: Icon(Icons.close, color: Colors.red),
-              label: Text(
-                'Үгүй',
-                style: GoogleFonts.rubik(
-                  fontSize: 14,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              onPressed: () => Navigator.of(context).pop(false),
-            ),
-            TextButton.icon(
-              icon: Icon(Icons.check_circle, color: Colors.green),
-              label: Text(
-                'Тийм',
-                style: GoogleFonts.rubik(
-                  fontSize: 14,
-                  color: Colors.green,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              onPressed: () => Navigator.of(context).pop(true),
-            ),
-          ],
-        );
-      },
-    );
+  Future<void> _submitWithImage() async {
+    if (selectedStatusId == null || _submitting) return;
+
+    if (selectedStatusId == 3 && _capturedImage == null) {
+      _toast('Зураг авах шаардлагатай', color: Colors.red);
+      return;
+    }
+
+    setState(() => _submitting = true);
+    try {
+      final url = Uri.parse(
+          '${Url.url}/api/mobile/delivery/complete/${delivery!['id']}');
+      final request = http.MultipartRequest('POST', url);
+      request.fields['status'] = selectedStatusId.toString();
+      request.fields['driver_comment'] = commentController.text.trim();
+
+      if (_capturedImage != null) {
+        request.files.add(await http.MultipartFile.fromPath(
+          'image',
+          _capturedImage!.path,
+          filename:
+              'delivery_${delivery!['id']}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ));
+      }
+
+      final response = await request.send();
+      final responseData = await response.stream.bytesToString();
+      final jsonResponse = json.decode(responseData);
+
+      if (response.statusCode == 200 && jsonResponse['success'] == true) {
+        _toast('Хүргэлт амжилттай бүртгэгдлээ', color: Colors.green);
+        final prefs = await SharedPreferences.getInstance();
+        final userId = prefs.getInt('user_id');
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => MainScreen(id: userId!)),
+            (_) => false,
+          );
+        }
+      } else {
+        _toast(jsonResponse['message'] ?? 'Алдаа гарлаа', color: Colors.red);
+      }
+    } catch (e) {
+      _toast('Алдаа гарлаа', color: Colors.red);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
   }
 
   Future<void> _markasDeclined() async {
     final prefs = await SharedPreferences.getInstance();
     final userId = prefs.getInt('user_id');
-
-    final url =
-    Uri.parse(Url.url + '/api/mobile/delivery/complete/${delivery!['id']}');
+    final url = Uri.parse(
+        '${Url.url}/api/mobile/delivery/complete/${delivery!['id']}');
 
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'status': 4}),
     );
-    print(url);
-    print(jsonEncode({'status': 5}));
+
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       if (data['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Хүргэлт цуцлагдлаа'),
-            backgroundColor: Colors.red,
-          ),
-        );
-
-        Navigator.push(
+        _toast('Хүргэлт цуцлагдлаа', color: Colors.red);
+        if (!mounted) return;
+        Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(
-            builder: (context) => MainScreen(id: userId!),
-          ),
+          MaterialPageRoute(builder: (_) => MainScreen(id: userId!)),
+          (_) => false,
         );
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(data['message'] ?? 'Алдаа гарлаа'),
-              backgroundColor: Colors.red),
-        );
+        _toast(data['message'] ?? 'Алдаа гарлаа', color: Colors.red);
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Сервертэй холбогдож чадсангүй'),
-            backgroundColor: Colors.red),
-      );
+      _toast('Сервертэй холбогдож чадсангүй', color: Colors.red);
     }
+  }
+
+  String formatDate(String? isoDate) {
+    if (isoDate == null || isoDate.isEmpty) return '—';
+    try {
+      final dateTime = DateTime.parse(isoDate);
+      return DateFormat('yyyy.MM.dd  HH:mm').format(dateTime);
+    } catch (_) {
+      return isoDate;
+    }
+  }
+
+  String formatPrice(dynamic price) {
+    final value = double.tryParse(price?.toString() ?? '0') ?? 0;
+    if (value == 0) return '0₮';
+    return '${NumberFormat('#,###').format(value)}₮';
+  }
+
+  void _openActionSheet(int statusId) {
+    selectedStatusId = statusId;
+    commentController.text = '';
+    _capturedImage = null;
+    _showActionSheet();
+  }
+
+  void _showActionSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                top: 12,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  Text(
+                    'Тайлбар нэмэх',
+                    style: GoogleFonts.rubik(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: _navy,
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: commentController,
+                    maxLines: 3,
+                    style: GoogleFonts.rubik(fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Тайлбар бичих...',
+                      hintStyle: GoogleFonts.rubik(color: _muted),
+                      filled: true,
+                      fillColor: _bg,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  if (_capturedImage != null) ...[
+                    const SizedBox(height: 14),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Image.file(
+                        _capturedImage!,
+                        height: 110,
+                        width: 110,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: () async {
+                        await _takePicture();
+                        setModalState(() {});
+                      },
+                      icon: const Icon(Icons.camera_alt, size: 16),
+                      label: Text('Зураг дахин авах',
+                          style: GoogleFonts.rubik()),
+                    ),
+                  ] else if (selectedStatusId == 3) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: () async {
+                          await _takePicture();
+                          setModalState(() {});
+                        },
+                        icon: const Icon(Icons.camera_alt_outlined),
+                        label: Text('Зураг авах', style: GoogleFonts.rubik()),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _orange,
+                          side: const BorderSide(color: _orange),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            setState(() => _capturedImage = null);
+                            Navigator.pop(context);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: _muted,
+                            side: const BorderSide(color: _line),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text('Болих', style: GoogleFonts.rubik()),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            if (selectedStatusId == 3 &&
+                                _capturedImage == null) {
+                              _toast('Зураг авах шаардлагатай',
+                                  color: Colors.red);
+                              return;
+                            }
+                            Navigator.pop(context);
+                            await _submitWithImage();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _orange,
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            'Хадгалах',
+                            style: GoogleFonts.rubik(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool?> showConfirmationDialog(String message) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            'Анхааруулга',
+            style: GoogleFonts.rubik(
+              fontWeight: FontWeight.w700,
+              fontSize: 17,
+              color: _navy,
+            ),
+          ),
+          content: Text(
+            message,
+            style: GoogleFonts.rubik(fontSize: 14, color: _muted),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Үгүй',
+                  style: GoogleFonts.rubik(color: _muted)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(
+                'Тийм',
+                style: GoogleFonts.rubik(
+                  color: _orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  PreferredSizeWidget _appBar() {
+    return AppBar(
+      elevation: 0,
+      backgroundColor: _orange,
+      iconTheme: const IconThemeData(color: Colors.white),
+      title: Text(
+        'Дэлгэрэнгүй',
+        style: GoogleFonts.rubik(
+          color: Colors.white,
+          fontSize: 17,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      centerTitle: true,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            'Хүргэлтийн дэлгэрэнгүй',
-            style: GoogleFonts.rubik(color: Colors.white, fontSize: 13),
-          ),
-          backgroundColor: Colors.deepOrange,
-          iconTheme: const IconThemeData(color: Colors.white),
-        ),
-        body: const Center(child: CircularProgressIndicator()),
+        backgroundColor: _bg,
+        appBar: _appBar(),
+        body: const Center(child: CircularProgressIndicator(color: _orange)),
       );
     }
 
     if (error != null) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(
-            'Хүргэлтийн дэлгэрэнгүй',
-            style: GoogleFonts.rubik(color: Colors.white, fontSize: 13),
-          ),
-          backgroundColor: Colors.deepOrange,
-          iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: _bg,
+        appBar: _appBar(),
+        body: Center(
+          child: Text(error!, style: GoogleFonts.rubik(color: _muted)),
         ),
-        body: Center(child: Text(error!)),
       );
     }
 
+    final merchant = delivery!['merchant']?['username']?.toString() ?? '—';
+    final phone = delivery!['phone']?.toString() ?? '';
+    final address = delivery!['address']?.toString() ?? '—';
+    final status = delivery!['status_name']?['status']?.toString() ?? '—';
+    final comment = delivery!['comment']?.toString().trim() ?? '';
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Хүргэлтийн дэлгэрэнгүй',
-          style: GoogleFonts.rubik(color: Colors.white, fontSize: 13),
-        ),
-        backgroundColor: Colors.deepOrange,
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: double.infinity,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+      backgroundColor: _bg,
+      appBar: _appBar(),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 28),
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _line),
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 6),
+            child: Column(
+              children: [
+                _infoRow(Icons.storefront_outlined, 'Дэлгүүр', merchant),
+                _divider(),
+                _infoRow(
+                  Icons.phone_outlined,
+                  'Утас',
+                  phone.isEmpty ? '—' : phone,
+                  valueColor: _orange,
+                  onTap: phone.isEmpty ? null : () => _callPhoneNumber(phone),
+                ),
+                _divider(),
+                _infoRow(Icons.location_on_outlined, 'Хаяг', address),
+                _divider(),
+                _infoRow(
+                  Icons.schedule_outlined,
+                  'Цаг',
+                  formatDate(delivery!['createdAt']?.toString()),
+                ),
+                _divider(),
+                _infoRow(
+                  Icons.chat_bubble_outline_rounded,
+                  'Тайлбар',
+                  comment.isEmpty ? '—' : comment,
+                ),
+                _divider(),
+                _infoRow(
+                  Icons.local_shipping_outlined,
+                  'Төлөв',
+                  status,
+                  valueColor: _orange,
+                ),
+                _divider(),
+                _infoRow(
+                  Icons.payments_outlined,
+                  'Үнэ',
+                  formatPrice(delivery!['price']),
+                  valueColor: _orange,
+                  bold: true,
+                ),
+              ],
+            ),
+          ),
+          if (items.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(
+              'Бараанууд',
+              style: GoogleFonts.rubik(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: _navy,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ),
+            const SizedBox(height: 8),
+            ...items.map((item) {
+              final name = item['good']?['name'] ?? 'Нэргүй бараа';
+              final qty = item['quantity'] ?? 0;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _line),
+                ),
+                child: Row(
                   children: [
-                    Text(
-                      "👤 Дэлгүүр: ${(delivery!['merchant']?['username'] ?? 'N/A')} 📞 ${(delivery!['merchant']?['phone'] ?? 'N/A')}",
-                      style: GoogleFonts.rubik(
-                          fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "📞 Утас: ${delivery!['phone'] ?? 'N/A'}",
-                      style: GoogleFonts.rubik(
-                          fontSize: 14, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "📍 Хаяг: ${delivery!['address'] ?? 'N/A'}",
-                      style: GoogleFonts.rubik(
-                          fontSize: 14, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "⏰ Цаг: ${formatDate(delivery!['createdAt'] ?? '')}",
-                      style: GoogleFonts.rubik(
-                          fontSize: 14, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "💬 Тайлбар: ${formatDate(delivery!['comment'] ?? '')}",
-                      style: GoogleFonts.rubik(
-                          fontSize: 14, color: Colors.black87),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "🚚 Төлөв: ${delivery!['status_name']?['status'] ?? 'N/A'}",
-                      style: GoogleFonts.rubik(
-                        fontSize: 14,
-                        color: Colors.deepOrange,
-                        fontWeight: FontWeight.w500,
+                    Expanded(
+                      child: Text(
+                        name.toString(),
+                        style: GoogleFonts.rubik(fontSize: 13, color: _navy),
                       ),
                     ),
-                    const SizedBox(height: 8),
                     Text(
-                      "💰 Үнэ: ${delivery!['price']?.toString() ?? '0'}₮",
+                      '×$qty',
                       style: GoogleFonts.rubik(
-                        fontSize: 14,
-                        color: Colors.black87,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: _muted,
                       ),
                     ),
                   ],
                 ),
+              );
+            }),
+          ],
+          const SizedBox(height: 18),
+          Text(
+            'Үйлдэл',
+            style: GoogleFonts.rubik(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: _navy,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _actionTile(
+            Icons.check_circle_outline,
+            'Хүргэсэн',
+            const Color(0xFF1FA97A),
+            () => _openActionSheet(3),
+          ),
+          _actionTile(
+            Icons.phone_outlined,
+            'Утсаар ярих',
+            const Color(0xFF1B9BE4),
+            () => _callPhoneNumber(phone),
+          ),
+          _actionTile(
+            Icons.schedule_outlined,
+            'Хойшлуулсан',
+            const Color(0xFF0D9488),
+            () => _openActionSheet(10),
+          ),
+          _actionTile(
+            Icons.undo_rounded,
+            'Хаяг дээр очсон боловч буцаасан',
+            const Color(0xFFE67E22),
+            () => _openActionSheet(11),
+          ),
+          _actionTile(
+            Icons.cancel_outlined,
+            'Авахаа больсон',
+            const Color(0xFFE5484D),
+            () async {
+              final confirmed =
+                  await showConfirmationDialog('Та итгэлтэй байна уу?');
+              if (confirmed == true) await _markasDeclined();
+            },
+          ),
+          if (_submitting) ...[
+            const SizedBox(height: 16),
+            const Center(
+              child: CircularProgressIndicator(color: _orange),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _divider() => const Divider(height: 1, color: _line);
+
+  Widget _infoRow(
+    IconData icon,
+    String label,
+    String value, {
+    Color? valueColor,
+    bool bold = false,
+    VoidCallback? onTap,
+  }) {
+    final row = Padding(
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: _muted),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 72,
+            child: Text(
+              label,
+              style: GoogleFonts.rubik(fontSize: 13, color: _muted),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: GoogleFonts.rubik(
+                fontSize: 13,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
+                color: valueColor ?? _navy,
               ),
             ),
+          ),
+        ],
+      ),
+    );
 
-            SizedBox(height: 24),
-            if (items.isNotEmpty) ...[
-              Text(
-                "📦 Бараанууд",
-                style: GoogleFonts.rubik(
-                    fontSize: 16, fontWeight: FontWeight.w600),
-              ),
-              const SizedBox(height: 8),
-              ...items.map((item) {
-                final name = item['good']?['name'] ?? 'Нэргүй бараа';
-                final qty = item['quantity'] ?? 0;
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding:
-                  const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        name.toString(),
-                        style: GoogleFonts.rubik(fontSize: 14),
-                      ),
-                      Text(
-                        "Тоо: $qty",
-                        style: GoogleFonts.rubik(fontSize: 14),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList()
-            ],
-            const SizedBox(height: 24),
-            GridView.count(
-              shrinkWrap: true,
-              crossAxisCount: 3,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              childAspectRatio: 1.5,
-              physics: const NeverScrollableScrollPhysics(),
-              children: [
-                _actionButton("Хүргэсэн", Icons.check_circle, Colors.green,
-                        () async {
-                      selectedStatusId = 3;
-                      commentController.text = '';
-                      _capturedImage = null;
-                      _showPostponeSheet();
-                    }),
-                _actionButton("Авахаа больсон", Icons.cancel, Colors.red, () async {
-                  final confirmed = await showConfirmationDialog(
-                      context, 'Та итгэлтэй байна уу?');
-                  if (confirmed == true) {
-                    _markasDeclined();
-                  }
-                }),
-                _actionButton("Утсаар ярих", Icons.phone, Colors.indigo, () {
-                  final phone = delivery?['phone'] ?? '';
-                  if (phone.isNotEmpty) {
-                    _callPhoneNumber(phone);
-                  } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Утасны дугаар олдсонгүй')));
-                  }
-                }),
-                _actionButton("Хаягаар очсон боловч буцаасан", Icons.camera_alt, Colors.orange, () {
-                  selectedStatusId = 11;
-                  commentController.text = '';
-                  _capturedImage = null;
-                  _showPostponeSheet();
-                }),
-                _actionButton("Хойшлуулсан", Icons.map, Colors.teal, () {
-                  selectedStatusId = 10;
-                  commentController.text = '';
-                  _capturedImage = null;
-                  _showPostponeSheet();
-                }),
-              ],
-            )
-          ],
+    if (onTap == null) return row;
+    return GestureDetector(onTap: onTap, child: row);
+  }
+
+  Widget _actionTile(
+    IconData icon,
+    String label,
+    Color color,
+    VoidCallback onTap,
+  ) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _line),
+      ),
+      child: ListTile(
+        onTap: _submitting ? null : onTap,
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        leading: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: color, size: 20),
         ),
+        title: Text(
+          label,
+          style: GoogleFonts.rubik(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: _navy,
+          ),
+        ),
+        trailing: Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
       ),
     );
   }
